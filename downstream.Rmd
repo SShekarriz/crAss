@@ -1,0 +1,61 @@
+---
+title: "crAss"
+author: "Sharok"
+date: "10/28/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(tidytext)
+
+```
+
+```{r}
+
+path="crAss_in_metagenome"
+patt=".blastout"
+COLS <- c("Metagenome","qseqid", "sseqid", "pident", "length", "mismatch", "gapopen",
+"qstart", "qend", "sstart", "send", "evalue", "bitscore", "qcovhsp")
+data.frame(sample.id = paste(dir(path, 
+                                 pattern = patt))) %>%
+# read each file from the directory (current path) and then unnest
+mutate(file_contents = map(sample.id, ~ read_tsv(
+  file.path(path, .), 
+            col_names = F))) %>%
+         unnest() %>%
+  mutate(sample.id = gsub(patt, "", sample.id)) -> blastOuts
+colnames(blastOuts) <- COLS
+
+```
+
+finding the complete crAss contigs
+```{r}
+
+blastOuts %>%
+  mutate(temp=sseqid) %>%
+  separate(temp, c("NodeID", "temp2"), sep="_length_") %>%
+  separate(temp2, c("ContigLength", "ContigCov"), sep = "_cov_") %>%
+  mutate(ContigLength= as.numeric(ContigLength)) %>%
+  # Only work with contigs >= 85KB
+  filter(ContigLength >= 85000) %>%
+  # filter based on pident
+  filter(pident >= 90) %>%
+  # define crAss genomes
+  mutate(crAssGenomes= case_when(
+    qseqid == "MT074136.1" ~ paste("MT074136.1__Bacteroides_phage_DAC15"),
+    qseqid == "MT074138.1" ~ paste("MT074138.1__Bacteroides_phage_DAC17"),
+    qseqid == "NC_024711.1" ~ paste("NC_024711.1__Uncultured_crAssphage"),
+    qseqid == "MH675552.1" ~ paste("MH675552.1__Bacteroides_phage_crAss001"),
+    TRUE ~ paste("Others")))-> crAss_contigs
+
+crAss_contigs %>%
+  select(Metagenome, crAssGenomes, sseqid) %>%
+  distinct() -> pos_crAss
+
+pos_crAss %>%
+  group_by(Metagenome, sseqid) %>%
+  summarise(crAss_counts= n()) -> pos_contigs
+
+```
+
