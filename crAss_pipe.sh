@@ -10,8 +10,9 @@ exec 2>&1
 Metagenome=$PWD/Assembled_metagenomes
 comple_crAss=$PWD/crAss_genomes/complete_genomes.fa
 blastOut=$PWD/crAss_in_metagenome
+res=$PWD/results
 
-mkdir -p $blastOut
+mkdir -p $blastOut $res
 
 echo "############################"
 echo "Finding crAss in metagenomes"
