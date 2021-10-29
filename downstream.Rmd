@@ -29,7 +29,7 @@ colnames(blastOuts) <- COLS
 
 ```
 
-finding the complete crAss contigs
+clean up the result and add more var based on contig and crAss info
 ```{r}
 
 blastOuts %>%
@@ -37,10 +37,6 @@ blastOuts %>%
   separate(temp, c("NodeID", "temp2"), sep="_length_") %>%
   separate(temp2, c("ContigLength", "ContigCov"), sep = "_cov_") %>%
   mutate(ContigLength= as.numeric(ContigLength)) %>%
-  # Only work with contigs >= 85KB
-  filter(ContigLength >= 85000) %>%
-  # filter based on pident
-  filter(pident >= 90) %>%
   # define crAss genomes
   mutate(crAssGenomes= case_when(
     qseqid == "MT074136.1" ~ paste("MT074136.1__Bacteroides_phage_DAC15"),
@@ -49,8 +45,9 @@ blastOuts %>%
     qseqid == "MH675552.1" ~ paste("MH675552.1__Bacteroides_phage_crAss001"),
     TRUE ~ paste("Others")))-> crAss_contigs
 
+
 crAss_contigs %>%
-  select(Metagenome, crAssGenomes, sseqid) %>%
+  select(Metagenome, crAssGenomes, sseqid) %>% 
   distinct() -> pos_crAss
 
 pos_crAss %>%
@@ -58,4 +55,58 @@ pos_crAss %>%
   summarise(crAss_counts= n()) -> pos_contigs
 
 ```
+
+Finding samples that have a meaningful crAss hit. the length of the total
+hit for a crAss genome against metagenome sample must be at least 40kb (about
+half size of crAss genome at minimum).
+These will include both fragmented contigs and intact ones. 
+
+```{r}
+
+crAss_contigs %>%
+  group_by(Metagenome, crAssGenomes) %>% 
+  summarise(total_length= sum(length)) %>%
+  filter(total_length >= 40000)-> crAss_hits
+
+```
+
+filtering the crAss_hits from the total blast output. Figure out if the hits
+are splitted across multiple contigs for one metagenome sample or they are
+present in a single complete one.
+if the match in a contig was longer than 80,000, it's complete hit
+if the match in a contig was smaller than 10,000, it's fragmented
+other cases will be labelled "Other_case" cause require more investigatioin
+```{r}
+
+crAss_contigs %>%
+  left_join(crAss_hits %>% mutate(Hit_type= paste("crAss_hit")),
+            by = c("Metagenome", "crAssGenomes")) %>%
+  filter(Hit_type == "crAss_hit") %>%
+  group_by(Metagenome, crAssGenomes, sseqid) %>% 
+  summarise(total_length= sum(length)) %>%
+  #remove any hit shorter than 1000bp in a contig
+  filter(total_length >= 1000) %>%
+  mutate(contig_type= case_when(total_length >= 80000 ~ paste("Complete"),
+                                total_length <= 10000 ~ paste("Fragmented"),
+                                TRUE ~ paste("Other_cases")))-> contig_hits
+
+contig_hits %>%
+  rename(contig= sseqid) %>%
+  group_by(Metagenome) -> test
+
+
+```
+
+Overall, there are 6 crAss positive metagenome samples. All of them contians 
+uncultured crAss + 2 samples from donor B (2013, 2016) that contains crAss001
+as well.
+sounds like only the uncultured crAss had the complete contigs >=90kb!
+crAss001 has fragmented contigs in 2013 and 2016 donor B samples.
+there are a couple of contigs from uncultured crAss that are separated from the
+complete crAss. that might explains why these are not perfectly 97kb. Let's 
+try to do the crAss assembly based on short read mapping. I should try this only
+for the uncultured crAss and crAss001 because others don't have any meaningful
+hits. 
+
+
 
