@@ -1,0 +1,163 @@
+#!/bin/bash
+
+if [ "$1" == "-help" ]; then
+  echo "
+
+##SShekarriz Oct, 2021
+Assembling crAss genome from metagenomics
+
+HOW TO USE:
+./crAssFinder [raw-reads] [coverage output] [threads]
+
+ [raw-read directory]: a full path direcotry contains all the interleaved fasta raw-reads
+ [coverage output]: a full path direcotry where all the mapping output files will be saved
+ [threads] number of threads being used for the job
+ "
+  exit 0
+fi
+
+####################################################################################
+DATE=`date '+%Y-%m-%d-%H:%M'`
+exec > >(tee -i CRASSFINDER_${DATE}.log)
+exec 2>&1
+####################################################################################
+echo "Here are the positional parameters"
+echo 'Directory contains raw-reads = ' $1
+echo 'Output directory  = ' $2
+echo 'Number of threads  = ' $3
+
+if [ $# -gt 0 ]; then
+    echo "Your command line contains $# arguments"
+else
+    echo "Your command line contains no arguments"
+fi
+######################################################
+if [ "$1" != "" ]; then
+    echo "Directory of raw-reads is not empty"
+else
+    echo "Positional parameter 1 is empty"
+fi
+
+echo "#########################################################"
+date -u
+echo "#########################################################"
+
+
+# HERE IS THE folder where the raw-reads are:
+clean="$1"
+# Here is the contig fasta file:
+contig_file=$PWD/crAss_genomes/crAssphage_uncultured.fasta
+# HERE is the alignment outputs
+aligned="$2"
+threads=$3
+mkdir -p $aligned
+
+
+echo "#####################################"
+echo "####### Req softwares         #######"
+Samtools="/dataone/common/software/samtools-1.11/samtools"
+echo $Samtools
+LongExractor=$PWD/bin/LongContigExtractor.py
+echo $LongExractor
+echo "#####################################"
+
+
+
+echo "##################################################"
+echo "changing to crAss environment"
+source /home/shekas3/anaconda3/bin/activate crAss
+echo "#################################################"
+
+#########################
+#Before the mapping:
+#########################
+
+if [ -f ${contig_file}.fai ]; then
+   echo "The file '${contig_file}.fai' exists."
+else
+   echo "The file '${contig_file}.fai' is not found."
+   echo "Indexing the contig file now"
+   bwa index $contig_file
+   samtools faidx $contig_file
+fi
+echo "#############################################################"
+echo "Short-reat mapping"
+echo "#############################################################"
+
+cd $clean
+for P1 in *.fastq
+do
+	sample=${P1%.fastq}
+	echo $P1
+	echo "${sample}"
+        echo "fasta files dir: $clean"
+        echo "alignment files dir: $aligned"
+        echo "Now mapping raw-reads of ${sample} to $contig_file reference"
+	
+
+	echo "######## Mapping reads to crAss ###################"	
+	if [ -f $aligned/${sample}.sorted.bam ]; then
+		echo "$aligned/${sample}.sorted.bam is present"
+	else
+		echo "$aligned/${sample}.sorted.bam is not found"
+		bwa mem -t $threads $contig_file $P1 | samtools sort -@ $threads | samtools view -@ $threads -F 4 -o $aligned/${sample}.sorted.bam
+	fi
+
+	
+	echo "######## Assemble consensus genome from metagenome ####"
+        if [ -f $aligned/${sample}.consensus.fa ]; then
+                echo "$aligned/${sample}.consensus.fa is present"
+        else
+                echo "$aligned/${sample}.consensus.fa is not found"
+        	samtools mpileup -A -d 6000000 -B -Q 0 --reference $contig_file $aligned/${sample}.sorted.bam | ivar consensus -p $aligned/${sample}.consensus -n N
+	fi
+
+
+
+	echo "######## check the quality of assembly #############"
+        if [ -f $aligned/${sample}.consensus.qual.txt ]; then
+                echo "$aligned/${sample}.consensus.qual.txt is present"
+        else
+                echo "$aligned/${sample}.consensus.qual.txt is not found" #####DO WE Have GFF FOR CrASS?? LOOK INTO THEIR GITHUB#############
+		quast $aligned/${sample}.consensus.fa -r $contig_file --features $gff --ref-bam $aligned/${sample}.sorted.bam --output-dir $aligned/${sample}.quast
+	fi
+
+	
+        echo "######## check 1x coverage ###################"
+        if [ -f $aligned/${sample}.samcov.txt ]; then
+                echo "$aligned/${sample}.samcov.txt is present"
+        else
+                echo "$aligned/${sample}.samcov.txt is not found"
+		$Samtools coverage $aligned/${sample}.sorted.bam -o $aligned/${sample}.samcov.txt
+	fi
+
+
+
+	echo "######## Looking into snp info ###################"
+        if [ -f $aligned/${sample}.vcf.gz ]; then
+                echo "$aligned/${sample}.vcf.gz is present"
+        else
+                echo "$aligned/${sample}.vcf.gz is not found"
+		bcftools mpileup -f $contig_file $aligned/${sample}.sorted.bam | bcftools call -vm >  $aligned/${sample}.vcf
+		bgzip -c $aligned/${sample}.vcf > $aligned/${sample}.vcf.gz
+		tabix $aligned/${sample}.vcf.gz
+	fi
+
+
+
+	echo "######## Finding the crAss haplotypes###########"
+        gretelout=$aligned/${sample}_gretel
+	mkdir -p $gretelout
+	if [ -f $gretelout/out.fasta ]; then
+                echo "$gretelout/out.fasta is present"
+        else
+                echo "$gretelout/out.fasta is not found"
+		gretel --master $contig_file -s 25633 -e 26964 -o $gretelout $aligned/${sample}.sorted.bam $aligned/${sample}.vcf.gz NC_024711.1
+	fi
+
+done
+
+echo "################### DONE ####################################"
+date -u
+echo "#############################################################"
+
