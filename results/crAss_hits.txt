@@ -1,0 +1,9 @@
+Metagenome	crAssGenomes	total_length
+818_ACTGAT	NC_024711.1__Uncultured_crAssphage	92794
+822_CGATGT	NC_024711.1__Uncultured_crAssphage	98188
+823_TGACCA	NC_024711.1__Uncultured_crAssphage	93351
+DonorB_D_2013	MH675552.1__Bacteroides_phage_crAss001	41743
+DonorB_D_2013	NC_024711.1__Uncultured_crAssphage	93980
+DonorB_D_2016	MH675552.1__Bacteroides_phage_crAss001	56722
+DonorB_D_2016	NC_024711.1__Uncultured_crAssphage	94090
+DonorB_D_May17	NC_024711.1__Uncultured_crAssphage	94481

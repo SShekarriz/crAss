@@ -46,14 +46,6 @@ blastOuts %>%
     TRUE ~ paste("Others")))-> crAss_contigs
 
 
-crAss_contigs %>%
-  select(Metagenome, crAssGenomes, sseqid) %>% 
-  distinct() -> pos_crAss
-
-pos_crAss %>%
-  group_by(Metagenome, sseqid) %>%
-  summarise(crAss_counts= n()) -> pos_contigs
-
 ```
 
 Finding samples that have a meaningful crAss hit. the length of the total
@@ -67,6 +59,9 @@ crAss_contigs %>%
   group_by(Metagenome, crAssGenomes) %>% 
   summarise(total_length= sum(length)) %>%
   filter(total_length >= 40000)-> crAss_hits
+
+write.table(crAss_hits, "results/crAss_hits.txt",
+          sep = "\t", row.names = F, quote = F)
 
 ```
 
@@ -92,7 +87,9 @@ crAss_contigs %>%
 
 contig_hits %>%
   rename(contig= sseqid) %>%
-  group_by(Metagenome) -> test
+  group_by(Metagenome) %>%
+  write.table("results/contig_hits.txt",
+          sep = "\t", row.names = F, quote = F)
 
 
 ```
