@@ -46,7 +46,7 @@ echo "#########################################################"
 # HERE IS THE folder where the raw-reads are:
 clean="$1"
 # Here is the contig fasta file:
-contig_file=$PWD/crAss_genomes/crAssphage_uncultured.fasta
+contig_file=/dataone/shekas3/crAssphage/crAss_genomes/crAssphage_uncultured.fasta
 # HERE is the alignment outputs
 aligned="$2"
 threads=$3
@@ -101,6 +101,7 @@ do
 	else
 		echo "$aligned/${sample}.sorted.bam is not found"
 		bwa mem -t $threads $contig_file $P1 | samtools sort -@ $threads | samtools view -@ $threads -F 4 -o $aligned/${sample}.sorted.bam
+		samtools index $aligned/${sample}.sorted.bam
 	fi
 
 	
@@ -139,7 +140,7 @@ do
         else
                 echo "$aligned/${sample}.vcf.gz is not found"
 		bcftools mpileup -f $contig_file $aligned/${sample}.sorted.bam | bcftools call -vm >  $aligned/${sample}.vcf
-		bgzip -c $aligned/${sample}.vcf > $aligned/${sample}.vcf.gz
+		bgzip $aligned/${sample}.vcf
 		tabix $aligned/${sample}.vcf.gz
 	fi
 
@@ -148,12 +149,30 @@ do
 	echo "######## Finding the crAss haplotypes###########"
         gretelout=$aligned/${sample}_gretel
 	mkdir -p $gretelout
-	if [ -f $gretelout/out.fasta ]; then
-                echo "$gretelout/out.fasta is present"
+	if [ -f $gretelout/genome.fasta ]; then
+                echo "$gretelout/genome.fasta is present"
         else
-                echo "$gretelout/out.fasta is not found"
+                echo "$gretelout/genome.fasta is not found"
 		gretel --master $contig_file -s 25633 -e 26964 -o $gretelout $aligned/${sample}.sorted.bam $aligned/${sample}.vcf.gz NC_024711.1
-	fi
+		mv $gretelout/out.fasta $gretelout/pcrA.fasta
+		mv $gretelout/snp.fasta $gretelout/snp.A.fasta
+		mv $gretelout/gretel.crumbs $gretelout/gretel.A.crumbs
+		
+		gretel --master $contig_file -s 33708 -e 35062 -o $gretelout $aligned/${sample}.sorted.bam $aligned/${sample}.vcf.gz NC_024711.1
+		mv $gretelout/out.fasta $gretelout/pcrB.fasta
+		mv $gretelout/snp.fasta $gretelout/snp.B.fasta
+		mv $gretelout/gretel.crumbs $gretelout/gretel.B.crumbs
+
+		gretel --master $contig_file -s 43819 -e 45057 -o $gretelout $aligned/${sample}.sorted.bam $aligned/${sample}.vcf.gz NC_024711.1
+		mv $gretelout/out.fasta $gretelout/pcrC.fasta	
+		mv $gretelout/snp.fasta $gretelout/snp.C.fasta
+                mv $gretelout/gretel.crumbs $gretelout/gretel.C.crumbs	
+
+		gretel --master $contig_file -o $gretelout $aligned/${sample}.sorted.bam $aligned/${sample}.vcf.gz NC_024711.1
+                mv $gretelout/out.fasta $gretelout/genome.fasta
+                mv $gretelout/snp.fasta $gretelout/snp.genome.fasta
+                mv $gretelout/gretel.crumbs $gretelout/gretel.genome.crumbs
+fi
 
 done
 
