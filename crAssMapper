@@ -1,0 +1,177 @@
+#!/bin/bash
+
+if [ "$1" == "-help" ]; then
+  echo "
+
+##SShekarriz Dec, 2021
+Mapping raw-reads to crAss reference and sample's crAss
+
+HOW TO USE:
+./crAssMapper [raw-read] [output] [threads] [sample's crAss]
+
+ [raw-read]: a full path to interleaved fastq file. must be *_inter.fastq
+ [output]: a full path direcotry where all the mapping output files will be saved
+ [threads] number of threads being used for the job
+ [sample's crAss] a full path to assembled crAss genome from metagenome
+ "
+  exit 0
+fi
+
+####################################################################################
+DATE=`date '+%Y-%m-%d-%H:%M'`
+exec > >(tee -i CRASSMAPPER_${DATE}.log)
+exec 2>&1
+####################################################################################
+echo "Here are the positional parameters"
+echo 'Directory contains raw-reads = ' $1
+echo 'Output directory  = ' $2
+echo 'Number of threads  = ' $3
+echo 'Assembled crAss from metagenome  = ' $4
+echo 'output sample name  = ' $5
+echo 'NCBI crAssphage = ' $6
+
+if [ $# -gt 0 ]; then
+    echo "Your command line contains $# arguments"
+else
+    echo "Your command line contains no arguments"
+fi
+######################################################
+if [ "$1" != "" ]; then
+    echo "Directory of raw-reads is not empty"
+else
+    echo "Positional parameter 1 is empty"
+fi
+
+echo "#########################################################"
+date -u
+echo "#########################################################"
+
+# HERE IS THE folder where the raw-reads are:
+clean="$1"
+# HERE is the alignment outputs
+aligned="$2"
+threads=$3
+crAss=$4
+sample=$5
+crAss_ref=$6
+crAss_B2013=$7 
+mkdir -p $aligned
+
+echo "#####################################"
+echo "####### Req softwares         #######"
+Samtools="/dataone/common/software/samtools-1.11/samtools"
+echo $Samtools
+LongExractor=$PWD/bin/LongContigExtractor.py
+echo $LongExractor
+echo "#####################################"
+
+
+echo "##################################################"
+echo "changing to crAss environment"
+source /home/shekas3/anaconda3/bin/activate crAss
+echo "#################################################"
+
+
+#########################
+#Before the mapping:
+#########################
+
+if [ -f ${crAss_ref}.fai ]; then
+   echo "The file '${crAss_ref}.fai' exists."
+else
+   echo "The file '${crAss_ref}.fai' is not found."
+   echo "Indexing the contig file now"
+   bwa index $crAss_ref
+   samtools faidx $crAss_ref
+fi
+
+
+if [ -f ${crAss}.fai ]; then
+   echo "The file '${crAss}.fai' exists."
+else
+   echo "The file '${crAss}.fai' is not found."
+   echo "Indexing the contig file now"
+   bwa index $crAss
+   samtools faidx $crAss
+fi
+
+
+if [ -f ${crAss_B2013}.fai ]; then
+   echo "The file '${crAss_B2013}.fai' exists."
+else
+   echo "The file '${crAss_B2013}.fai' is not found."
+   echo "Indexing the contig file now"
+   bwa index $crAss_B2013
+   samtools faidx $crAss_B2013
+fi
+
+
+echo "#############################################################"
+echo "mapping reads to crAss ref"
+echo "#############################################################"
+sample=$5
+bam=$aligned/${sample}_crAss_ref.bam
+flagstat=$aligned/${sample}_crAss_ref.stat
+coverage=$aligned/${sample}_crAss_ref.cover
+depth=$aligned/${sample}_crAss_ref.depth
+
+out=$coverage
+if [ -f $out ]; then
+   echo "The file '$out' exists."
+else
+   echo "The file '$out' is not found."
+   bwa mem -t $threads $crAss_ref $clean | samtools sort -@ $threads | $Samtools view \
+	-@ $threads -o $bam
+   $Samtools flagstat $bam > $flagstat
+   $Samtools coverage $bam > $coverage
+fi
+
+echo "#############################################################"
+echo "mapping reads to donorB's crAss 2013"
+echo "#############################################################"
+sample=$5
+bam=$aligned/${sample}_crAss_B2013.bam
+flagstat=$aligned/${sample}_crAss_B2013.stat
+coverage=$aligned/${sample}_crAss_B2013.cover
+depth=$aligned/${sample}_crAss_B2013.depth
+
+out=$depth
+if [ -f $out ]; then
+   echo "The file '$out' exists."
+else
+   echo "The file '$out' is not found."
+   bwa mem -t $threads $crAss_B2013 $clean | samtools sort -@ $threads | $Samtools view \
+        -@ $threads -o $bam
+   $Samtools flagstat $bam > $flagstat
+   $Samtools coverage $bam > $coverage
+   $Samtools depth -aa $bam > $depth
+fi
+
+
+echo "#############################################################"
+echo "mapping reads to crAss assembly"
+echo "#############################################################"
+sample=$5
+bam=$aligned/${sample}_crAss_assem.bam
+flagstat=$aligned/${sample}_crAss_assem.stat
+coverage=$aligned/${sample}_crAss_assem.cover
+depth=$aligned/${sample}_crAss_assem.depth
+
+out=$depth
+if [ -f $out ]; then
+   echo "The file '$out' exists."
+else
+   echo "The file '$out' is not found."
+   bwa mem -t $threads $crAss $clean | samtools sort -@ $threads | $Samtools view \
+        -@ $threads -o $bam
+   $Samtools flagstat $bam > $flagstat
+   $Samtools coverage $bam > $coverage
+   $Samtools depth -aa $bam > $depth
+fi
+
+
+
+echo "################### DONE ####################################"
+date -u
+echo "#############################################################"
+
