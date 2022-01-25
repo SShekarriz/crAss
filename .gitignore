@@ -6,3 +6,10 @@ crAss_in_metagenome/
 Hiba_notes/
 fixing_donorB2012_assembly/
 phylogeny/
+Figures/*png
+Figures/*txt
+Figures/All_crass/
+Figures/crAss_coverage/
+Figures/DonorB_crass/
+Figures/FMT_crass/
+Figures/single_prokka/

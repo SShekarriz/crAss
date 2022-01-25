@@ -1,0 +1,1026 @@
+---
+title: "FigMaker"
+author: "Sharok"
+date: "1/13/2022"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(gggenomes)
+
+```
+
+
+```{r}
+path="crAss_coverage"
+patt=".stat"
+data.frame(sample.id = paste(dir(path, 
+                                 pattern = patt))) %>%
+# read each file from the directory (current path) and then unnest
+mutate(file_contents = map(sample.id, ~ read_tsv(
+  file.path(path, .), 
+            col_names = F))) %>%
+         unnest() %>%
+  mutate(sample.id = gsub(patt, "", sample.id)) %>%
+  filter(grepl("_crAss_ref", sample.id)) %>%
+  mutate(sample.id = gsub("_crAss_ref", "", sample.id)) %>%
+  #only donor B sample
+  filter(grepl("DonorB_D", sample.id))-> df
+
+df %>%
+  rename(Reads= X1) %>%
+  filter(grepl("in total", Reads)) %>%
+  mutate(Type= paste("Total")) %>%
+  mutate(Reads= gsub(" .*", "", Reads))-> df_total
+
+df %>%
+  rename(Reads= X1) %>%
+  filter(grepl("+ 0 mapped", Reads)) %>%
+  mutate(Type= paste("Mapped")) %>%
+  mutate(Reads= gsub(" .*", "", Reads)) %>%
+  # binding the total reads
+  bind_rows(df_total) %>%
+  spread(Type, Reads) %>%
+  mutate(Unmapped= as.numeric(Total) - as.numeric(Mapped)) %>%
+  mutate(Mpercent= as.numeric(Mapped)/as.numeric(Total)*100) %>%
+  filter(grepl("DonorB_D_", sample.id)) %>%
+  mutate(sample.id = gsub("DonorB_D_", "", sample.id)) %>%
+  mutate(sample.id = gsub("May17", "2017A", sample.id)) %>%
+  mutate(sample.id = gsub("Oct17", "2017B", sample.id)) -> tbl
+
+tbl$sample.id <- factor(tbl$sample.id, 
+                        levels = rev(c("2012",
+                                   "2013",
+                                   "2016",
+                                   "2017A",
+                                   "2017B")))
+
+
+ggplot(tbl, aes(Mpercent, sample.id, fill="green")) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  geom_text(aes(label = paste(round(Mpercent, digits = 2), "%", sep = "")),
+              position = position_stack(vjust = 0.5), size = 1.5) +
+  scale_fill_manual(values = c("green" = "#1a9641")) +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        legend.title = element_blank(),
+        #axis.line = element_blank(),
+        legend.position = "none")
+ggsave("DonB_percent.png", width = 4, height = 4, units = "cm")
+
+
+crAss_abund <- tbl
+
+```
+
+```{r}
+
+cols <- c("sample.id", "rname","startpos",
+"endpos","numreads","covbases","coverage","meandepth","meanbaseq","meanmapq")
+patt=".cover"
+data.frame(sample.id = paste(dir(path, 
+                                 pattern = patt))) %>%
+# read each file from the directory (current path) and then unnest
+mutate(file_contents = map(sample.id, ~ read_tsv(
+  file.path(path, .), col_names = FALSE))) %>%
+         unnest() %>%
+  filter(X1 != "#rname") %>%
+  mutate(sample.id = gsub(patt, "", sample.id)) %>%
+  filter(grepl("_crAss_ref", sample.id)) %>%
+  mutate(sample.id = gsub("_crAss_ref", "", sample.id)) %>%
+  filter(grepl("DonorB_D_", sample.id))-> df
+  colnames(df) <- cols
+  
+df$sample.id <- factor(df$sample.id, 
+                        levels = rev(c("DonorB_D_2012",
+                                   "DonorB_D_2013",
+                                   "DonorB_D_2016",
+                                   "DonorB_D_May17",
+                                   "DonorB_D_Oct17")))
+
+
+ggplot(df, aes(as.numeric(coverage) ,sample.id, fill="green")) +
+  geom_bar(stat = "identity") +
+  theme_classic() +
+  geom_text(aes(label = paste(round(as.numeric(coverage), 
+                                    digits = 2), "%", sep = "")),
+              position = position_stack(vjust = .5), size = 1.5) +
+  scale_fill_manual(values = c("green" = "#969696")) +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        legend.title = element_blank(),
+        #axis.line = element_blank(),
+        legend.position = "none")
+ggsave("DonB_coverage.png", width = 4, height = 4, units = "cm")
+
+```
+
+
+```{r}
+
+table <- data.frame(sample.id = c("DonorB_D_2012", "DonorB_D_2013",
+                                "DonorB_D_2016", "DonorB_D_May17",
+                                "DonorB_D_Oct17"),
+                    pos= c("p1", "p1", "p1", "p1", "p0"),
+                    neg= c("n0", "n0", "n0", "n0", "n1"))
+table %>%
+  gather(Type, Res, -sample.id) %>%
+  mutate(PCR= paste(1)) -> table
+
+pcr_col <- c("p1" = "#1a9641",
+             "p0" = "#cccccc",
+             "n0" = "#cccccc",
+             "n1" = "#d7191c")
+
+ggplot(table, aes(Type, sample.id, color=Res)) +
+  geom_point(size=3) +
+  facet_grid(sample.id~., space = "free", scales = "free") +
+  scale_color_manual(values = pcr_col) +
+  theme_bw() +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        legend.title = element_blank(),
+        strip.text = element_blank(),
+        legend.position = "none",
+        panel.grid = element_blank())
+ggsave("DonB_pcr.png", width = 2, height = 4, units = "cm")
+
+```
+
+```{r}
+
+data <- read.csv("merged_abundance_table.txt", sep = "\t")
+colnames(data) <- gsub("_profile", "", colnames(data))
+
+data %>%
+  select(X.clade_name, DonorB_D_Oct17:DonorB_D_2012) %>%
+  rename(clade_name=X.clade_name) %>%
+  # genus-level
+  filter(grepl("g__Bacteroides", clade_name)) %>%
+  # removing rows that have 0 for all samples
+  filter_at(vars(-clade_name), any_vars(. != 0)) %>%
+  gather(Samples, Abundance, -clade_name) %>%
+  filter(grepl("s__", clade_name)) %>%
+  mutate(Taxa= gsub("k.*s__", "", clade_name)) -> tbl
+
+colours =c("Bacteroides_caccae" = "#8dd3c7",
+"Bacteroides_cellulosilyticus" = "#ffffb3",
+"Bacteroides_fragilis" = "#bebada",
+"Bacteroides_galacturonicus" = "#bc80bd",
+"Bacteroides_massiliensis" = "#80b1d3",
+"Bacteroides_nordii" = "#fdb462",
+"Bacteroides_uniformis" = "#b3de69",
+"Bacteroides_ovatus" = "#fccde5",
+"Bacteroides_sp_CAG_462" = "#d9d9d9",
+"Bacteroides_vulgatus" = "#fb8072",
+"Bacteroides_stercoris" = "#ccebc5",
+"Bacteroides_thetaiotaomicron" = "#ffed6f",
+"Bacteroides_xylanisolvens" = 'grey69')
+           
+
+tbl$Samples <- factor(tbl$Samples, 
+                        levels = rev(c("DonorB_D_2012",
+                                   "DonorB_D_2013",
+                                   "DonorB_D_2016",
+                                   "DonorB_D_May17",
+                                   "DonorB_D_Oct17")))
+
+  ggplot(tbl, aes(Abundance,Samples,fill=Taxa)) +
+  geom_bar(stat="identity") +
+  scale_fill_manual(values = colours) +
+  theme_classic() +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        legend.title = element_blank(),
+        #axis.line = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = "none")
+ggsave("DonB_metagenome.png", width = 4, height = 4, units = "cm")
+
+
+ ggplot(tbl, aes(Abundance,Samples,fill=Taxa)) +
+  geom_bar(stat="identity") +
+  scale_fill_manual(values = colours) +
+  theme_classic() +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        legend.title = element_blank(),
+        #axis.line = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.position = "right")
+ ggsave("DonB_metagenome_legend.png", width = 6, height = 10, units = "cm")
+ 
+```
+
+# comparing crAssphage abundance compared to Bacteroides
+
+```{r}
+
+crAss_abund %>%
+  rename(Samples = sample.id) %>%
+  mutate(crAss_abund= as.numeric(Mapped) / as.numeric(Total)) %>%
+  select(Samples, crAss_abund) -> tbl1
+
+data <- read.csv("merged_abundance_table.txt", sep = "\t")
+colnames(data) <- gsub("_profile", "", colnames(data))
+
+data %>%
+  select(X.clade_name, DonorB_D_Oct17:DonorB_D_2012) %>%
+  rename(clade_name=X.clade_name) %>%
+  # genus-level
+  filter(grepl("g__Bacteroides", clade_name)) %>%
+  # removing rows that have 0 for all samples
+  filter_at(vars(-clade_name), any_vars(. != 0)) %>%
+  gather(Samples, Abundance, -clade_name) %>%
+  #filter(grepl("s__", clade_name)) %>%
+  mutate(Taxa= gsub("k.*s__", "", clade_name)) %>%
+  mutate(Taxa= gsub("k.*g__", "", Taxa)) %>%
+  mutate(Samples = gsub("DonorB_D_", "", Samples)) %>%
+  mutate(Samples = gsub("May17", "2017A", Samples)) %>%
+  mutate(Samples = gsub("Oct17", "2017B", Samples)) %>%
+  rename(Host_abund=Abundance) %>%
+  rename(Species=Taxa) %>% select(Samples, Species, Host_abund) %>%
+  left_join(tbl1, by = "Samples") %>%
+  gather(Type, Abundance, -Samples, -Species)-> tbl 
+
+tbl %>%
+  spread(Type, Abundance) %>%
+  group_by(Species) %>%
+  summarise(cor= cor(crAss_abund, Host_abund, method = "spearman"),
+  pval= cor.test(crAss_abund, Host_abund, method = "spearman")$p.value) -> tbl.t
+
+tbl_label= data.frame(Species = tbl.t$Species,
+                      label= paste(round(tbl.t$cor, 2), 
+                                   round(tbl.t$pval, 2), sep = " ,p="))
+ggplot(tbl, 
+       aes(Samples, Abundance, color=Type)) +
+  geom_line(aes(group=Type)) + geom_point(size=0.6) +
+  geom_text(x = -Inf, y = -Inf, aes(label = label), 
+            data = tbl_label, color="black", size=2,
+            hjust = -0.1, vjust = -0.6) +
+  facet_wrap(~Species, scales = "free_y") +
+  scale_y_log10() +
+  theme_bw() +
+  scale_color_manual(values = c("Host_abund" = "black",
+                                "crAss_abund" = "#1a9641")) +
+  theme(text = element_text(size=6),
+        axis.title = element_blank(),
+        legend.position = c(0.7,0.1),
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 35))
+ggsave("crAss_host_Bacteroides.png", width = 12, height = 10, units = "cm")
+
+```
+
+# comparing crAssphage abundance compared to all Species, report sig ones
+
+```{r}
+
+crAss_abund %>%
+  rename(Samples = sample.id) %>%
+  mutate(crAss_abund= as.numeric(Mapped) / as.numeric(Total)) %>%
+  select(Samples, crAss_abund) -> tbl1
+
+data <- read.csv("merged_abundance_table.txt", sep = "\t")
+colnames(data) <- gsub("_profile", "", colnames(data))
+
+data %>%
+  select(X.clade_name, DonorB_D_Oct17:DonorB_D_2012) %>%
+  rename(clade_name=X.clade_name) %>%
+  # genus-level
+  filter(grepl("s__", clade_name)) %>%
+  # removing rows that have 0 for all samples
+  filter_at(vars(-clade_name), any_vars(. != 0)) %>%
+  gather(Samples, Abundance, -clade_name) %>%
+  #filter(grepl("s__", clade_name)) %>%
+  mutate(Taxa= gsub("k.*s__", "", clade_name)) %>%
+  mutate(Samples = gsub("DonorB_D_", "", Samples)) %>%
+  mutate(Samples = gsub("May17", "2017A", Samples)) %>%
+  mutate(Samples = gsub("Oct17", "2017B", Samples)) %>%
+  rename(Host_abund=Abundance) %>%
+  rename(Species=Taxa) %>% select(Samples, Species, Host_abund) %>%
+  left_join(tbl1, by = "Samples") %>%
+  gather(Type, Abundance, -Samples, -Species)-> tbl 
+
+tbl %>%
+  spread(Type, Abundance) %>%
+  group_by(Species) %>%
+  summarise(cor= cor(crAss_abund, Host_abund, method = "spearman"),
+  pval= cor.test(crAss_abund, Host_abund, method = "spearman")$p.value) %>%
+  filter(pval <= 0.06 & cor >= 0) -> tbl.t
+
+tbl_label= data.frame(Species = tbl.t$Species,
+                      label= paste(round(tbl.t$cor, 2), 
+                                   round(tbl.t$pval, 2), sep = " ,p="))
+ggplot(tbl %>% filter(Species %in% tbl.t$Species), 
+       aes(Samples, Abundance, color=Type)) +
+  geom_line(aes(group=Type)) + geom_point(size=0.6) +
+  geom_text(x = -Inf, y = -Inf, aes(label = label), 
+            data = tbl_label, color="black", size=1.5,
+            hjust = -0.1, vjust = -0.6) +
+  facet_wrap(~Species, scales = "free_y") +
+  scale_y_log10() +
+  theme_bw() +
+  scale_color_manual(values = c("Host_abund" = "black",
+                                "crAss_abund" = "#1a9641")) +
+  theme(text = element_text(size=4.5),
+        axis.title = element_blank(),
+        legend.position = "none",
+        legend.title = element_blank(),
+        axis.text.x = element_text(angle = 35))
+ggsave("crAss_host_All.png", width = 5, height = 2.5, units = "cm")
+
+```
+
+
+```{r}
+s0 <- read_seqs("DonorB_crass/DonB.fa") 
+g0 <- read_feats("DonorB_crass/DonB_prokka/DonB.gff") #%>%      
+       #mutate(gc_cont=as.numeric(gc_cont))  # per gene GC-content
+l0 <- read_links("DonorB_crass/DonB.paf") 
+f0 <- read_bed("DonorB_crass/DonB-gc.tsv")
+cogs <- read_tsv("DonorB_crass/DonB-cogs.tsv", col_names = c("feat_id", 
+                                                  "cluster_id", 
+                                                  "cluster_n"))
+
+g0 %>%
+  mutate(seq_id= gsub("DonorB_D_2013__1", "2013", seq_id)) %>%
+  mutate(seq_id= gsub("DonorB_D_2016__1", "2016", seq_id)) %>%
+  mutate(seq_id= gsub("DonorB_D_May17__1", "2017A", seq_id)) %>%
+  mutate(seq_id= gsub("NC_024711.1", "ref", seq_id)) %>%
+  left_join(cogs) %>%
+  mutate(cluster_n2= paste("c", cluster_n, sep = "")) %>%
+  mutate(cluster_label= case_when(cluster_n >= 4 ~ paste("common"),
+                                  TRUE ~ paste(cluster_id))) -> g1
+
+g1 %>%
+  select(seq_id, cluster_id) %>%
+  mutate(gene= seq_id) %>%
+  spread(seq_id, gene) %>%
+  select(cluster_id, ref, "2013":"2017A") %>%
+  unite("cluster_type", ref:"2017A", na.rm = TRUE, remove = FALSE) %>%
+  select(cluster_id, cluster_type)-> clustering
+
+g0 %>%
+  left_join(cogs) %>%
+  left_join(clustering) -> g1
+
+colors <- c("ref_2013_2016_2017A" = "#969696",
+            "ref_2013_2016" = "#a6cee3",
+            "ref_2016_2017A" = "#1f78b4",
+            "ref_2017A" = "#b2df8a",
+            "ref" = "#33a02c",
+            "2013_2016_2017A" = "#fb9a99",
+            "2013_2016" = "#e31a1c",
+            "2013" = "#fdbf6f",
+            "2016" = "#ff7f00", 
+            "2017A" = "#e7298a")
+
+
+gggenomes(genes=g1, seqs=s0, links=l0) +
+  geom_seq() + 
+  geom_gene() +
+  geom_gene(aes(fill=cluster_type), size=3) +
+  #geom_seq_label() +
+  geom_link(offset = 0.2) +
+  scale_fill_manual(values = colors) +
+  theme(legend.position = "bottom",
+        legend.title = element_blank())
+ggsave("DonorB_annotation.png", width = 30, height = 8, units = "cm")
+
+
+```
+
+
+```{r}
+
+s0 <- read_seqs("All_crass/All.fa") 
+g0 <- read_feats("All_crass/All_prokka/All.gff") #%>%      
+       #mutate(gc_cont=as.numeric(gc_cont))  # per gene GC-content
+l0 <- read_links("All_crass/All.paf") 
+f0 <- read_bed("All_crass/All-gc.tsv")
+cogs <- read_tsv("All_crass/All-cogs.tsv", col_names = c("feat_id", 
+                                                  "cluster_id", 
+                                                  "cluster_n"))
+g0 %>%
+  left_join(cogs) %>%
+  mutate(cluster_n2= paste("c", cluster_n, sep = "")) -> g1
+
+colors <- c("c10" = "#969696",
+            "c9" = "#a6cee3",
+            "c8" = "#1f78b4",
+            "c7" = "#b2df8a",
+            "c6" = "#33a02c",
+            "c5" = "#fb9a99",
+            "c4" = "#e31a1c",
+            "c3" = "#fdbf6f",
+            "c2" = "#ff7f00", 
+            "c1" = "#e7298a")
+
+gggenomes(genes=g1, seqs=s0, links=l0) +
+  geom_seq() + 
+  geom_gene() +
+  geom_gene(aes(fill=cluster_n2)) +
+  #geom_seq_label() +
+  geom_link(offset = 0.2) +
+  scale_fill_manual(values = colors) +
+  theme(legend.position = "none",
+        legend.title = element_blank())
+ggsave("All_annotation.png", width = 25, height = 10, units = "cm")
+
+gggenomes(genes=g1, seqs=s0, links=l0) +
+  geom_seq() + 
+  geom_gene() +
+  geom_gene(aes(fill=cluster_n2)) +
+  #geom_seq_label() +
+  #geom_link(offset = 0.2) +
+  scale_fill_manual(values = colors) +
+  theme(legend.position = "none",
+        legend.title = element_blank())
+ggsave("All_annotation1.png", width = 25, height = 10, units = "cm")
+
+gggenomes(genes=g1, seqs=s0, links=l0) +
+  geom_seq() + 
+  geom_gene() +
+  geom_gene(aes(fill=cluster_n2)) +
+  geom_seq_label() +
+  #geom_link(offset = 0.2) +
+  scale_fill_manual(values = colors) +
+  theme(legend.position = "bottom",
+        legend.title = element_blank())
+ggsave("All_annotation2.png", width = 25, height = 10, units = "cm")
+
+```
+
+
+```{r}
+
+snp_visualizer <- function(p_depth, p_gff, p_snp){
+depth <- read.csv(p_depth, sep = "\t", header= F)
+colnames(depth) <- c("contig", "position", "depth")
+gff <- read_feats(p_gff)
+snp <- read.csv(p_snp, sep = "\t")
+# add snp data to depth file
+depth %>%
+  left_join(snp) %>%
+  mutate(snp_depth= case_when(is.na(frequency) ~ paste(depth),
+                              TRUE ~ paste(depth * frequency))) %>%
+  mutate(snp_type = case_when(is.na(snp_type) ~ paste("Not_snp"),
+                              snp_type == "" ~ paste(type),
+                              TRUE ~ snp_type)) -> depth
+
+# add snp data to gene file
+gff %>%
+ left_join(snp %>% select(locus_tag, snp_type), by = "locus_tag") %>%
+  mutate(snp_type = case_when(is.na(snp_type) ~ paste("Not_snp"),
+                              TRUE ~ snp_type))-> gff
+
+color <- c("intergenic" = "#7b3294",
+           "synonymous" = "#2b83ba",
+           "nonsynonymous" = "#d7191c",
+           "INS" = "#e66101",
+           "DEL" = "#d01c8b",
+           "CDS" = "#cccccc",
+           "Not_snp" = "NA")
+
+p1 <- ggplot(depth %>% filter(between(position, 0, 100000)), 
+       aes(position, depth)) +
+  geom_density(stat = "identity", alpha=0.9, fill = "grey", color= NA) +
+  geom_smooth(fill="black", color="black") +
+  geom_bar(stat = "identity", position = "identity", 
+                              aes(group=snp_type,
+                                  y=as.numeric(snp_depth),
+                                 color=snp_type,
+                                 fill=snp_type), alpha=1) +
+  scale_fill_manual(values = color) +
+  scale_color_manual(values = color) +
+  #facet_grid(contig~.) +
+  scale_y_sqrt() +
+  theme_bw() +
+  theme(legend.title = element_blank(),
+        legend.position = "none", 
+        axis.title = element_blank(),
+        text= element_text(size=7))
+
+p2 <- gggenomes(genes=gff) +
+  geom_seq() + 
+  geom_gene(size = 2) +
+  geom_gene(aes(fill=type)) +
+  #facet_grid(seq_id~.) +
+  theme_classic() +
+  scale_fill_manual(values = color) +
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        text= element_text(size=7)) 
+cowplot::plot_grid(p1, p2, ncol = 1, align = "v")}
+
+
+snp_calculator <- function(p_snp){
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  group_by(snp_type) %>% tally() %>%
+  spread(snp_type, n) %>%
+  rename(I=intergenic,
+         nS=nonsynonymous,
+         S=synonymous) %>%
+  mutate("nS/S" = nS / S) %>%
+  gather(snp_type, n) %>%
+  mutate(Ref = paste(snp$seq_id[1]))
+}
+
+```
+
+# 2012
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/DonorB_D_2012_crAss_assem.depth"
+p_gff="single_prokka/DonorB_D_2012.gff"
+p_snp="crAss_coverage/DonorB_D_2012_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("DonB_2012_assem.png", width = 20, height = 6, units = "cm")
+snp_calculator(p_snp)
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/DonorB_D_2012_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/DonorB_D_2012_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("DonB_2012_to2013.png", width = 20, height = 6, units = "cm")
+snp_calculator(p_snp)
+```
+
+# 2013
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/DonorB_D_2013_crAss_assem.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/DonorB_D_2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("DonB_2013_assem.png", width = 20, height = 6, units = "cm")
+snp_calculator(p_snp)
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/DonorB_D_2013_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/DonorB_D_2013_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("DonB_2013_to2013.png", width = 20, height = 6, units = "cm")
+snp_calculator(p_snp)
+```
+
+# 2016
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/DonorB_D_2016_crAss_assem.depth"
+p_gff="single_prokka/DonorB_D_2016.gff"
+p_snp="crAss_coverage/DonorB_D_2016_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("DonB_2016_assem.png", width = 20, height = 6, units = "cm")
+snp_calculator(p_snp)
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/DonorB_D_2016_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/DonorB_D_2016_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("DonB_2016_to2013.png", width = 20, height = 6, units = "cm")
+snp_calculator(p_snp)
+```
+
+# 2017A (May17)
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/DonorB_D_May17_crAss_assem.depth"
+p_gff="single_prokka/DonorB_D_May17.gff"
+p_snp="crAss_coverage/DonorB_D_May17_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("DonB_May17_assem.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  group_by(snp_type) %>% tally()
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/DonorB_D_May17_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/DonorB_D_May17_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("DonB_May17_to2013.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+
+
+```
+
+# 2017B (Oct17)
+```{r}
+# Map to DonorB 2013
+p_depth="crAss_coverage/DonorB_D_Oct17_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/DonorB_D_Oct17_B2013_breseq.tsv"
+
+depth <- read.csv(p_depth, sep = "\t", header= F)
+colnames(depth) <- c("contig", "position", "depth")
+gff <- read_feats(p_gff)
+snp <- read.csv(p_snp, sep = "\t")
+color <- c("intergenic" = "#7b3294",
+           "synonymous" = "#2b83ba",
+           "nonsynonymous" = "#d7191c",
+           "INS" = "#e66101",
+           "DEL" = "#d01c8b",
+           "CDS" = "#cccccc",
+           "Not_snp" = "NA")
+
+p1 <- ggplot(depth %>% filter(between(position, 0, 100000)), 
+       aes(position, depth)) +
+  geom_density(stat = "identity", alpha=0.9, fill = "grey", color= NA) +
+  geom_smooth(fill="black", color="black") +
+  scale_fill_manual(values = color) +
+  scale_color_manual(values = color) +
+  #facet_grid(contig~.) +
+  scale_y_sqrt() +
+  theme_bw() +
+  theme(legend.title = element_blank(),
+        legend.position = "none", 
+        axis.title = element_blank(),
+        text= element_text(size=7))
+
+p2 <- gggenomes(genes=gff) +
+  geom_seq() + 
+  geom_gene(size = 2) +
+  geom_gene(aes(fill=type)) +
+  #facet_grid(seq_id~.) +
+  theme_classic() +
+  scale_fill_manual(values = color) +
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        axis.title = element_blank(),
+        axis.text.y = element_blank(),
+        text= element_text(size=7)) 
+cowplot::plot_grid(p1, p2, ncol = 1, align = "v")
+ggsave("DonB_Oct17_to2013.png", width = 20, height = 6, units = "cm")
+
+```
+
+
+
+
+# FMT818
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/818_ACTGAT_crAss_assem.depth"
+p_gff="single_prokka/818_ACTGAT.gff"
+p_snp="crAss_coverage/818_ACTGAT_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("818_ACTGAT_assem.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/818_ACTGAT_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/818_ACTGAT_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("818_ACTGAT_to2013.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+
+```
+
+# FMT822
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/822_CGATGT_crAss_assem.depth"
+p_gff="single_prokka/822_CGATGT.gff"
+p_snp="crAss_coverage/822_CGATGT_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("822_CGATGT_assem.png", width = 20, height = 6, units = "cm")
+snp_calculator(p_snp)
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/822_CGATGT_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/822_CGATGT_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("822_CGATGT_to2013.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+```
+
+# FMT823
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/823_TGACCA_crAss_assem.depth"
+p_gff="single_prokka/823_TGACCA.gff"
+p_snp="crAss_coverage/823_TGACCA_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("823_TGACCA_assem.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/823_TGACCA_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/823_TGACCA_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("823_TGACCA_to2013.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+
+```
+
+# SHCM2_D
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/SHCM2_D_crAss_assem.depth"
+p_gff="single_prokka/SHCM2_D.gff"
+p_snp="crAss_coverage/SHCM2_D_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("SHCM2_D_assem.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/SHCM2_D_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/SHCM2_D_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("SHCM2_D_to2013.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+```
+
+# SHCM4_D
+```{r}
+# Map to assembled contig
+p_depth="crAss_coverage/SHCM4_D_crAss_assem.depth"
+p_gff="single_prokka/SHCM4_D.gff"
+p_snp="crAss_coverage/SHCM4_D_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("SHCM4_D_assem.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+
+# Map to DonorB 2013
+p_depth="crAss_coverage/SHCM4_D_crAss_B2013.depth"
+p_gff="single_prokka/DonorB_D_2013.gff"
+p_snp="crAss_coverage/SHCM4_D_B2013_breseq.tsv"
+snp_visualizer(p_depth = p_depth, p_gff = p_gff, p_snp = p_snp)
+ggsave("SHCM4_D_to2013.png", width = 20, height = 6, units = "cm")
+snp <- read.csv(p_snp, sep = "\t")
+snp %>%
+  select(position, snp_type) %>%
+  filter(snp_type != "") %>%
+  filter(!grepl("\\|", snp_type)) %>%
+  group_by(snp_type) %>% tally() 
+```
+
+
+```{r}
+map <- "~/Drive2/UC_FMT/UCFMT1_16S_ALL/Map0vs6_Dec4_JL_editJuly17.txt"
+Mapfile <- read.csv(map, sep = "\t", stringsAsFactors = F)
+#remove all the white space from the MpFile
+Mapfile <- data.frame(lapply(Mapfile, trimws), stringsAsFactors = FALSE)
+#edit a colname for MapFile:
+colnames(Mapfile)[29] <- "MajorDonor"
+# Editing Timepoint_Treatment_PatientNo variable. it was not correct
+# also edit the donor variable; had to add initial + Patient No to make it 
+# Uniqu
+Mapfile %>%
+mutate(Donor = case_when(!PatientNo == "DNA" ~ 
+                             paste(Donor, PatientNo, sep = ""),
+                         TRUE ~ as.character(Donor)))  %>%
+mutate(Remission= case_when(Remission == "No" ~ paste("NoRes"),
+                            Remission == "Yes" ~ paste("Res"),
+                            TRUE ~ as.character(Remission))) %>%
+mutate(Timepoint= case_when(Timepoint == "0" ~ paste("WK0"),
+                            Timepoint == "6" ~ paste("WK6"),
+                            TRUE ~ as.character(Timepoint))) %>%
+mutate(Treatment= case_when(Treatment == "P" ~ paste("Placebo"),
+                            Treatment == "A" ~ paste("FMT"),
+                            TRUE ~ as.character(Treatment))) %>%
+mutate(Timepoint_Treatment= case_when(Timepoint_Treatment == "A0" ~ paste("F0"),
+                            Timepoint_Treatment == "A6"~ paste("F6"),
+                    TRUE ~ as.character(Timepoint_Treatment))) %>%
+mutate(Timepoint_Treatment_PatientNo = case_when(!Timepoint_Treatment == "DNA" ~ 
+                                        paste(Timepoint_Treatment, "_pt",
+                                        PatientNo, sep = ""),
+                    TRUE ~ as.character(Timepoint_Treatment))) %>%
+mutate(Fig_lab= case_when(!PatientNo == "DNA" ~ 
+                            paste("pt", PatientNo, sep = ""),
+                           PatientNo == "DNA" ~ 
+                            paste(gsub("Donor", "Don", Donor)))) %>%
+mutate(MajorDonor = case_when(Treatment == "Placebo" ~ paste("Placebo"),
+                              TRUE ~ as.character(MajorDonor))) %>%
+mutate(MajorDonor = case_when(MajorDonor == "" ~ paste("Uknown"),
+                              TRUE ~ as.character(MajorDonor))) %>%
+mutate_all(funs(stringr::str_replace(., "DNA", "Slurry"))) %>%
+  # new variable for ordination plot
+  mutate(Rem_TimeTreat= case_when(Remission == "Slurry" ~ paste("Donor"),
+                                  TRUE ~ paste(Remission, Timepoint_Treatment,
+                                               sep = "_"))) %>%
+ mutate(TimeTreat= case_when(Fig_lab == "DonB" ~ paste(Fig_lab),
+            Timepoint_Treatment != "Slurry" ~ paste(Timepoint_Treatment),
+            TRUE ~ paste("Donor"))) %>%
+ mutate(donorB= case_when(Fig_lab == "DonB" ~ paste(Fig_lab),
+                          Fig_lab != "DonB" ~ paste("Other")))-> Mapfile
+
+```
+
+
+```{r}
+Mapfile %>%
+  select(Fig_lab, MajorDonor) %>%
+  rename(Trial_n= Fig_lab)-> FMT_donor
+
+
+pcr <- read.csv("crAss_pcr_result_sharok.csv")
+colnames(pcr) <- c("Trial_n", "Initials", "Wk0", "Wk6", "Donor0", "Donor5")
+
+pcr %>%
+  gather(Time, pcr, -Trial_n, -Initials) %>%
+  mutate(pos = case_when(pcr == 1 ~ paste("p1"),
+                         TRUE ~ paste("p0"))) %>%
+  mutate(neg = case_when(pcr == 0 ~ paste("n1"),
+                         TRUE ~ paste("n0"))) %>%
+  mutate(Trial_n = paste("pt", Trial_n, sep = "")) %>%
+  gather(control, res, -pcr, -Time, -Initials, -Trial_n) %>%
+  left_join(FMT_donor) %>% 
+  mutate(Treat= case_when(MajorDonor == "Placebo" ~ paste("Placebo"),
+                          MajorDonor == "B" ~ paste("DonorB"),
+                          TRUE ~ paste("Other")))-> table
+
+
+ggplot(table, aes(control,Trial_n, color=res)) +
+  geom_point(size=1) +
+  facet_grid(Treat~Time, space = "free", scales = "free") +
+  scale_color_manual(values = pcr_col) +
+  theme_bw() +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "none",
+        strip.text.y = element_text(angle = 0))
+ggsave("FMT_pcr.png", width = 9, height = 15, units = "cm")
+
+```
+
+
+```{r}
+
+Mapfile %>%
+  select(Fig_lab, MajorDonor) %>%
+  rename(Trial_n= Fig_lab)-> FMT_donor
+
+
+pcr <- read.csv("crAss_pcr_result_sharok.csv")
+colnames(pcr) <- c("Trial_n", "Initials", "Wk0", "Wk6", "Donor0", "Donor5")
+
+pcr %>%
+  gather(Time, pcr, -Trial_n, -Initials) %>%
+  mutate(pos = case_when(pcr == 1 ~ paste("p1"),
+                         TRUE ~ paste("p0"))) %>%
+  mutate(neg = case_when(pcr == 0 ~ paste("n1"),
+                         TRUE ~ paste("n0"))) %>%
+  mutate(Trial_n = paste("pt", Trial_n, sep = "")) %>%
+  gather(control, res, -pcr, -Time, -Initials, -Trial_n) -> table
+
+
+
+
+
+
+
+table %>%
+  spread(Time, res) %>%
+  distinct() %>%
+  mutate(window= case_when(Donor0 == "p1" ~ paste("Positive"),
+                           Donor0 == "n1" ~ paste("Negative"),
+                           TRUE ~ paste("NA"))) %>%
+  select(Trial_n, window) %>% distinct() %>%
+  spread(window, window) %>%
+  mutate(type= case_when(Positive == "Positive" ~ paste("Base Positive"),
+                         Negative == "Negative" ~ paste("Base Negative"),
+                         TRUE ~ paste("Not available")))-> tbl
+
+table %>%
+  left_join(tbl %>% select(Trial_n, type)) -> table1
+
+table %>%
+  left_join(FMT_donor) %>%
+  mutate(MajorDonor = case_when(is.na(MajorDonor) ~ paste("other"),
+                                TRUE ~ paste(MajorDonor)))-> table2
+
+
+pcr_col <- c("p1" = "#1a9641",
+             "p0" = "#cccccc",
+             "n0" = "#cccccc",
+             "n1" = "#d7191c")
+
+table1$Time <- factor(table1$Time, levels = c("Donor0", "Donor5", "Wk0", "Wk6"))
+table1$type <- factor(table1$type, levels = c("Base Positive", "Base Negative", 
+                                            "Not available"))
+
+table2$Time <- factor(table2$Time, levels = c("Donor0", "Donor5", "Wk0", "Wk6"))
+
+ggplot(table1, aes(control,Trial_n, color=res)) +
+  geom_point(size=1) +
+  facet_grid(type~Time, space = "free", scales = "free") +
+  scale_color_manual(values = pcr_col) +
+  theme_bw() +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "none",
+        strip.text.y = element_text(angle = 0))
+ggsave("FMT_pcr.png", width = 9, height = 15, units = "cm")
+
+
+table2 %>%
+  filter(Time == "Donor0") -> test
+  spread(control, res) %>%
+  mutate(order = case_when(pos == "p1" ~ 1,
+                           TRUE ~ 2)) %>%
+  select(Trial_n, order)-> order
+
+ggplot(table2 %>% left_join(order) %>% filter(MajorDonor == "DonorB"), 
+       aes(control, reorder_within(Trial_n, order, MajorDonor), color=res)) +
+  geom_point(size=1) +
+  facet_grid(MajorDonor~Time, space = "free", scales = "free") +
+  scale_color_manual(values = pcr_col) +
+  theme_bw() +
+  scale_y_reordered() +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "none",
+        strip.text.y = element_text(angle = 0))
+ggsave("DonorB_FMT_pcr.png", width = 8, height = 8, units = "cm")
+
+ggplot(table2 %>% left_join(order) %>% filter(MajorDonor == "other"), 
+       aes(control, reorder_within(Trial_n, order, MajorDonor), color=res)) +
+  geom_point(size=1) +
+  facet_grid(MajorDonor~Time, space = "free", scales = "free") +
+  scale_color_manual(values = pcr_col) +
+  theme_bw() +
+  scale_y_reordered() +
+  theme(text = element_text(size = 7),
+        axis.title = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "none",
+        strip.text.y = element_text(angle = 0))
+ggsave("Other_FMT_pcr.png", width = 8, height = 12, units = "cm")
+
+
+
+
+```
+
