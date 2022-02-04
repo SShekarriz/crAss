@@ -620,6 +620,19 @@ fi
 
 
 echo "#####################################"
+echo "Mergin all _B2013_BRESEQ outputs"
+echo "#####################################"
+
+out=$cover/AllMerged_B2013_breseq.tsv
+if [ -f $out ]; then
+        echo "'$out' exists."
+else
+        echo "'$out' is not found."
+	gbf=$annot_S/DonorB_D_2013_prokka/DonorB_D_2013.gbf
+	gdtools ANNOTATE -o $cover/AllMerged_B2013_breseq.tsv -f TSV -r $gbf $cover/*_B2013_breseq.gd
+fi
+
+echo "#####################################"
 echo "building phylogenies"
 echo "#####################################"
 
